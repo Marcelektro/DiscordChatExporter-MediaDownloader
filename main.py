@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--inputFile', help='A DCE export file to convert')
     parser.add_argument('--inputDirectory', help='Directory with DCE export files to convert')
     parser.add_argument('--outputDirectory', help='Directory, where output dirs for each input file will be created')
+    parser.add_argument('inputItems', nargs='*', help='Files or directories to process')
 
     args = parser.parse_args()
 
@@ -38,7 +39,7 @@ def main():
     args_directory = args.inputDirectory
     args_out_dir = args.outputDirectory
 
-    if arg_file is None and args_directory is None:
+    if arg_file is None and args_directory is None and (args.inputItems is None or len(args.inputItems) == 0):
         print('Please specify input file or directory.')
         parser.print_help()
         return
@@ -71,6 +72,25 @@ def main():
                 # Ensure the file is a DCE export file
                 if os.path.isfile(file_path) and os.path.splitext(filename)[1] in valid_input_file_extensions:
                     files.append(file_path)
+
+    if args.inputItems is not None:
+
+        for item_name in args.inputItems:
+
+            if not os.path.exists(item_name):
+                print(f'Skipping input item {item_name} as it does not exist.')
+                continue
+
+            if os.path.isfile(item_name):
+                files.append(item_name)
+                continue
+
+            if os.path.isdir(item_name):
+                for filename in os.listdir(item_name):
+                    file_path = os.path.join(item_name, filename)
+
+                    if os.path.isfile(file_path) and os.path.splitext(filename)[1] in valid_input_file_extensions:
+                        files.append(file_path)
 
 
     # If no files were found, exit.

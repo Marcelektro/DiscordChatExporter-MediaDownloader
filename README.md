@@ -19,13 +19,14 @@ The program takes an input file, finds all matching links, and downloads the att
 
 ## Example usages
 
-Convert a single file: `python ./main.py --inputFile "./Marcelektro's server - Text Channels - general [735893720033132564].html"`<br>
+Convert a single file: `python ./main.py "./Marcelektro's server - Text Channels - general [735893720033132564].html"`<br>
 
-Bulk-convert a folder with multiple files: `python ./main.py --inputDirectory "./Discord DM backups/"`<br>
+Bulk-convert a folder with multiple files: `python ./main.py "./Discord DM backups/"`<br>
 <br>
 
 This will create a folder with a converted export file and downloaded assets for each input file. (You can set its location using the `--outputDirectory` option.)
 
+For example: `python ./main.py --outputDirectory "./MyCommunity Exports/" "D:/Discord Chat Exports/MyCommunity"`
 
 ## Contact
 
