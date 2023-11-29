@@ -208,11 +208,16 @@ def main():
 
         progress_bar.close()
 
-        # Generate offline version of the file referencing to downloaded files
+        # Get filename of offline version of the file referencing to downloaded files
         orig_name, orig_ext = os.path.splitext(os.path.basename(file))
+        offline_name = os.path.join(output_dir.path, f'{orig_name}.offline{orig_ext}')
+
+        # Rename output file to a non-existent name if it already exists.
+        if os.path.exists(offline_name):
+            offline_name = get_unique_filepath(offline_name)
 
         # Create offline version of the 'file' file, to outputDir/file.offline.ext, using media_links dictionary.
-        create_offline_version(file, os.path.join(output_dir.path, f'{orig_name}.offline{orig_ext}'), media_links)
+        create_offline_version(file, offline_name, media_links)
 
         # "Close" output directory (also release the lock)
         output_dir.close()
