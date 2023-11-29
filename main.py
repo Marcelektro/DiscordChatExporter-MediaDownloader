@@ -98,10 +98,19 @@ def main():
         print('No files were matched; quitting.')
         return
 
+
+    # Directory in which output directories will be created
+    out_root_dir = './'
+    # If argument is provided, use it.
+    if args_out_dir is not None:
+        out_root_dir = args_out_dir
+
+
     # Print all matches
     print('--------------------')
     print(f'Matched files ({len(files)}):')
     print(' - ' + '\n - '.join(files))
+    print(f'Output directory: ({out_root_dir}):')
     print('--------------------')
 
     # Ask user whether to start processing the files
@@ -112,12 +121,6 @@ def main():
         return
 
     # Processing part
-
-    # Directory in which output directories will be created
-    out_root_dir = './'
-    # If argument is provided, use it.
-    if args_out_dir is not None:
-        out_root_dir = args_out_dir
 
     # For each file we found ...
     for file in files:
