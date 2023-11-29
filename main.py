@@ -222,10 +222,17 @@ def main():
         # "Close" output directory (also release the lock)
         output_dir.close()
 
+        print(f'Complete! Output file saved to {offline_name}.')
 
-# A function to get all Discord CDN links in a file
-# Returns a dictionary with keys being Discord CDN urls, and values being null values (later local downloaded files).
+
 def get_media_links(file_path) -> dict:
+    """
+    A function to get all Discord CDN links from a file
+
+    :param file_path: File in which we'll look for links
+    :return: Dictionary: keys being Discord CDN urls, values being null values (later local downloaded files)
+    """
+
     links = {}
 
     with open(file_path, 'r', encoding='utf-8') as file:
@@ -240,6 +247,13 @@ def get_media_links(file_path) -> dict:
 
 
 def create_offline_version(input_filepath, output_filepath, cdn_local_mappings):
+    """
+    A function to generate offline export version using cdn to local file mappings
+
+    :param input_filepath: Original export file
+    :param output_filepath: Output filepath
+    :param cdn_local_mappings: Dictionary with cdn->localFile mappings
+    """
 
     # Copy input file into output file line by line, while replacing
     # found Discord links with their local file equivalents.
@@ -276,6 +290,12 @@ def extract_filename_from_discord_cdn_url(cdn_url):
 
 
 def download_file(url, output_path_in):
+    """
+    A function to download files from a remote URL and save them in a directory with a unique name
+
+    :return: file path of downloaded file
+    """
+
     headers = {
         'User-Agent': 'Mozilla/5.0 (DiscordChatExporter-MediaDownloader)'
     }
@@ -308,6 +328,14 @@ def download_file(url, output_path_in):
 
 
 def get_unique_filepath(filepath):
+    """
+    A function that generates a unique filepath by appending a counter to the base filename
+    if the given filepath already exists
+
+    :param filepath: The original filepath to check for uniqueness
+    :return: Filepath with counter appended if original one exists
+    """
+
     base_dir, file_name = os.path.split(filepath)
     base_name, extension = os.path.splitext(file_name)
     counter = 1
