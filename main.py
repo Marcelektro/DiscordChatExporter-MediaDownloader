@@ -18,7 +18,7 @@ from tqdm import tqdm
 valid_input_file_extensions = ['.html', '.txt', '.json', '.csv']
 
 # A regex to match all Discord CDN links
-discord_cdn_link_regex = re.compile(r'(https://(?:cdn\.discordapp\.com|media\.discordapp\.com)/[^\s"<]+)')
+discord_cdn_link_regex = re.compile(r'(https://(?:cdn\.discordapp\.com|media\.discordapp\.com)/[^\s"<,]+)')
 
 
 def main():
