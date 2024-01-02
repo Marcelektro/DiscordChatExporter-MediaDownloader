@@ -110,7 +110,7 @@ def main():
     print('--------------------')
     print(f'Matched files ({len(files)}):')
     print(' - ' + '\n - '.join(files))
-    print(f'Output directory: ({out_root_dir}):')
+    print(f'Output directory: ({out_root_dir})')
     print('--------------------')
 
     # Ask user whether to start processing the files
@@ -126,7 +126,9 @@ def main():
     for file in files:
 
         # ... create an output folder
-        output_dir = DownloadsFolder(os.path.join(out_root_dir, f'./output-{os.path.basename(file)}'))
+        out_dir_name = f'./output-{os.path.splitext(os.path.basename(file))[0]}'
+
+        output_dir = DownloadsFolder(os.path.join(out_root_dir, out_dir_name))
 
         # Output folder has a lock file to prevent modifying it while it's used.
         # When the app e.g. crashes, it does not remove the lock file correctly.
