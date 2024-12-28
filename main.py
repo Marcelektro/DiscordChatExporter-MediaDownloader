@@ -4,6 +4,7 @@ import os.path
 import re
 from datetime import datetime
 from urllib.parse import urlparse
+import html
 
 import requests
 from tqdm import tqdm
@@ -301,6 +302,9 @@ def download_file(url, output_path_in):
     headers = {
         'User-Agent': 'Mozilla/5.0 (DiscordChatExporter-MediaDownloader)'
     }
+
+    # Unescape any potential HTML entities in the URL (e.g. `&amp;` -> `&`)
+    url = html.unescape(url)
 
     # Send the request
     response = requests.get(url, headers=headers, stream=True)
