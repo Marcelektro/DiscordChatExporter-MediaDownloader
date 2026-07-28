@@ -112,7 +112,7 @@ def main():
     # Directory in which output will be created.
     # If --mergeOutput is used, it will equal single combined dir,
     # otherwise it's the parent dir under which each file gets its own output-<name> dir
-    out_root_dir = args_out_dir if args_out_dir is not None else './'
+    out_root_dir = args_out_dir if args_out_dir is not None else './output/'
 
 
     # Print all matches
