@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 import argparse
 import json
 import os.path
@@ -33,7 +35,11 @@ def main():
 
     parser.add_argument('--inputFile', help='A DCE export file to convert')
     parser.add_argument('--inputDirectory', help='Directory with DCE export files to convert')
-    parser.add_argument('--outputDirectory', help='Directory, where output dirs for each input file will be created')
+    parser.add_argument('--outputDirectory', help='Directory, where output dirs for each input file will be created '
+                                                  '(or the single combined output dir, if --mergeOutput is used)')
+    parser.add_argument('--mergeOutput', action='store_true',
+                        help='Instead of creating a separate output folder per input file, put all attachments '
+                             'in one shared attachments/ folder, and all offline chatlogs in one shared chatlogs/ folder.')
     parser.add_argument('inputItems', nargs='*', help='Files or directories to process')
 
     args = parser.parse_args()
@@ -41,6 +47,7 @@ def main():
     arg_file = args.inputFile
     args_directory = args.inputDirectory
     args_out_dir = args.outputDirectory
+    merge_output = args.mergeOutput
 
     if arg_file is None and args_directory is None and (args.inputItems is None or len(args.inputItems) == 0):
         print('Please specify input file or directory.')
@@ -102,11 +109,10 @@ def main():
         return
 
 
-    # Directory in which output directories will be created
-    out_root_dir = './'
-    # If argument is provided, use it.
-    if args_out_dir is not None:
-        out_root_dir = args_out_dir
+    # Directory in which output will be created.
+    # If --mergeOutput is used, it will equal single combined dir,
+    # otherwise it's the parent dir under which each file gets its own output-<name> dir
+    out_root_dir = args_out_dir if args_out_dir is not None else './'
 
 
     # Print all matches
@@ -117,13 +123,100 @@ def main():
     print('--------------------')
 
     # Ask user whether to start processing the files
-    confirmUserInput = input('Would you like to start conversion on those files? (Y/N) ')
+    confirm_user_input = input('Would you like to start conversion on those files? (Y/N) ')
 
-    if not confirmUserInput.lower() in ['y', 'yes', 'confirm']:
+    if not confirm_user_input.lower() in ['y', 'yes', 'confirm']:
         print('Cancelled, quitting.')
         return
 
     # Processing part
+
+    if merge_output:
+        process_files_merged(files, out_root_dir)
+    else:
+        process_files_separately(files, out_root_dir)
+
+
+def open_output_folder(output_dir: DownloadsFolder):
+    """
+    Opens (locks) an output folder, prompting the user to delete a stale lock file if one is found.
+    """
+
+    while True:
+        try:
+            output_dir.open()
+            break
+        except LockFileExistsException:
+            # We'll ask user whether to delete it.
+            print('==================================================================')
+            print('Output folder has lock file (probably is in-use).')
+            print(f'Folder path: {output_dir.path}')
+            print('If you\'re already running this program on that directory, wait for it to exit, '
+                  'otherwise you may delete the lock file.')
+            print('==================================================================')
+            if input('Do you want to delete it (Y), or (QUIT)? ').lower() in ['y', 'yes']:
+                os.remove(output_dir.lockfile_path)
+            else:
+                exit(0)
+
+
+def download_missing_attachments(media_links: dict, output_dir: DownloadsFolder):
+    """
+    Downloads every not-yet-downloaded (value is None) or missing-on-disk attachment
+    in media_links into output_dir.attachments_dir, mutating media_links in place.
+
+    Periodically saves the mapping to output_dir.
+    """
+
+    progress_bar = tqdm(total=sum(1 for value in media_links.values() if value is None))
+
+    # For each entry in mappings dictionary
+    # TODO: Implement multithreading
+    i = 0
+    for cdn_url, local_file in media_links.items():
+
+        # If the value (local file path) is set and exists on the system, ignore (as it's already there).
+        if local_file is not None and os.path.exists(os.path.join(output_dir.path, local_file)):
+            continue
+
+        # Get a path for where to download the attachment.
+        # ./<output_dir>/<attachments_dir>/<file>
+        out_path = os.path.join(output_dir.attachments_dir, extract_filename_from_discord_cdn_url(cdn_url))
+
+        # Try to download file (if exists, will append _1, _2 etc. to filename)
+        try:
+            out_path = download_file(cdn_url, out_path)
+
+            # Since this is after download, we will only add successfully downloaded files to mappings.
+            # ./<attachments_dir>/<file>
+            mapping_path = os.path.join(os.path.basename(output_dir.attachments_dir), os.path.basename(out_path))
+            media_links[cdn_url] = mapping_path
+
+        except Exception as e:
+            # Inform about the error
+            # (Use tqdm write instead of print, so that the progress bar doesn't break.)
+            progress_bar.write(f"Failed to download file from `{cdn_url}`: `{str(e)}`")
+
+        # Increment progress bar by 1.
+        progress_bar.update()
+
+        # Save mappings every 5 downloads
+        if i % 5 == 0:
+            output_dir.save_mappings(media_links)
+
+        i += 1
+
+    # Save mappings file
+    output_dir.save_mappings(media_links)
+
+    progress_bar.close()
+
+
+def process_files_separately(files, out_root_dir):
+    """
+    Each input file gets its own output-<name>/ folder with its own attachments/ subfolder and its own offline file next to it.
+    (Default functionality)
+    """
 
     # For each file we found ...
     for file in files:
@@ -131,26 +224,11 @@ def main():
         # ... create an output folder
         out_dir_name = f'./output-{os.path.splitext(os.path.basename(file))[0]}'
 
-        output_dir = DownloadsFolder(os.path.join(out_root_dir, out_dir_name))
+        output_dir = DownloadsFolder(os.path.join(out_root_dir, out_dir_name), is_merge_outputs=False)
 
         # Output folder has a lock file to prevent modifying it while it's used.
         # When the app e.g. crashes, it does not remove the lock file correctly.
-        while True:
-            try:
-                output_dir.open()
-                break
-            except LockFileExistsException:
-                # We'll ask user whether to delete it.
-                print('==================================================================')
-                print('Output folder has lock file (probably is in-use).')
-                print(f'Folder path: {output_dir}')
-                print('If you\'re already running this program on that directory, wait for it to exit, '
-                      'otherwise you may delete the lock file.')
-                print('==================================================================')
-                if input('Do you want to delete it (Y), or (QUIT)? ').lower() in ['y', 'yes']:
-                    os.remove(output_dir.lockfile_path)
-                else:
-                    exit(0)
+        open_output_folder(output_dir)
 
         # Load already found 'dc cdn -> local file' mappings of files in that directory.
         media_links = output_dir.load_mappings()
@@ -165,53 +243,11 @@ def main():
 
         print(f'File `{file}` has {len(media_links)} links.')
 
-
         # Save mappings file
         output_dir.save_mappings(media_links)
 
         # Download all non-downloaded files
-        progress_bar = tqdm(total=sum(1 for value in media_links.values() if value is None))
-
-        # For each entry in mappings dictionary
-        # TODO: Implement multithreading
-        i = 0
-        for cdn_url, local_file in media_links.items():
-
-            # If the value (local file path) is set and exists on the system, ignore (as it's already there).
-            if local_file is not None and os.path.exists(os.path.join(output_dir.path, local_file)):
-                continue
-
-            # Get a path for where to download the attachment.
-            # ./<output_dir>/<attachments_dir>/<file>
-            out_path = os.path.join(output_dir.attachments_dir, extract_filename_from_discord_cdn_url(cdn_url))
-
-            # Try to download file (if exists, will append _1, _2 etc. to filename)
-            try:
-                out_path = download_file(cdn_url, out_path)
-
-                # Since this is after download, we will only add successfully downloaded files to mappings.
-                # ./<attachments_dir>/<file>
-                mapping_path = os.path.join(os.path.basename(output_dir.attachments_dir), os.path.basename(out_path))
-                media_links[cdn_url] = mapping_path
-
-            except Exception as e:
-                # Inform about the error
-                # (Use tqdm write instead of print, so that the progress bar doesn't break.)
-                progress_bar.write(f"Failed to download file from `{cdn_url}`: `{str(e)}`")
-
-            # Increment progress bar by 1.
-            progress_bar.update()
-
-            # Save mappings every 5 downloads
-            if i % 5 == 0:
-                output_dir.save_mappings(media_links)
-
-            i += 1
-
-        # Save mappings file
-        output_dir.save_mappings(media_links)
-
-        progress_bar.close()
+        download_missing_attachments(media_links, output_dir)
 
         # Get filename of offline version of the file referencing to downloaded files
         orig_name, orig_ext = os.path.splitext(os.path.basename(file))
@@ -228,6 +264,54 @@ def main():
         output_dir.close()
 
         print(f'Complete! Output file saved to {offline_name}.')
+
+
+def process_files_merged(files, out_root_dir):
+    """
+    A single shared output folder for ALL input files, one shared attachments/ dir and one shared chatlogs/ dir.
+    (Functionality with --mergeOutput used)
+    """
+
+    output_dir = DownloadsFolder(out_root_dir, is_merge_outputs=True)
+
+    # Output folder has a lock file to prevent modifying it while it's used.
+    open_output_folder(output_dir)
+
+    # Load already found 'dc cdn -> local file' mappings (shared across all input files).
+    media_links = output_dir.load_mappings()
+
+    # Collect media links from every input file into the shared mapping.
+    for file in files:
+        ml = get_media_links(file)
+
+        for link in ml:
+            if link not in media_links:
+                media_links[link] = ml[link]
+
+    print(f'Found {len(media_links)} unique link(s) across {len(files)} file(s).')
+
+    # Save mappings file
+    output_dir.save_mappings(media_links)
+
+    # Download all non-downloaded files into the single shared attachments/ folder
+    download_missing_attachments(media_links, output_dir)
+
+    # Create an offline version of each input file, in the shared chatlogs/ folder,
+    # referencing the shared attachments/ folder via the media_links mapping.
+    for file in files:
+        orig_name, orig_ext = os.path.splitext(os.path.basename(file))
+        offline_name = os.path.join(output_dir.chatlogs_dir, f'{orig_name}.offline{orig_ext}')
+
+        # Rename output file to a non-existent name if it already exists.
+        if os.path.exists(offline_name):
+            offline_name = get_unique_filepath(offline_name)
+
+        create_offline_version(file, offline_name, media_links)
+
+        print(f'Complete! Output file saved to {offline_name}.')
+
+    # "Close" output directory (also release the lock)
+    output_dir.close()
 
 
 def get_media_links(file_path) -> dict:
@@ -359,11 +443,13 @@ def get_unique_filepath(filepath):
 
 class DownloadsFolder:
 
-    def __init__(self, path):
+    def __init__(self, path, is_merge_outputs = False):
         self.path = path
         self.lockfile_path = os.path.join(self.path, 'downloads_folder.lock')
         self.attachment_mapping_file = os.path.join(self.path, 'attachment_mapping_file.json')
         self.attachments_dir = os.path.join(self.path, 'attachments')
+        self.is_merge_outputs = is_merge_outputs
+        self.chatlogs_dir = os.path.join(self.path, '.') # ez fix for relative paths being wrong - dump chatlogs to the same dir as attachments/ dir
 
 
     def open(self):
@@ -376,6 +462,10 @@ class DownloadsFolder:
 
         # Ensure the attachments_dir exists
         os.makedirs(self.attachments_dir, exist_ok=True)
+
+        # if merging is enabled, ensure chatlogs_dir exists
+        if self.is_merge_outputs:
+            os.makedirs(self.chatlogs_dir, exist_ok=True)
 
         with open(self.lockfile_path, 'w'):
             pass
